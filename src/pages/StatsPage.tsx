@@ -13,6 +13,10 @@ type PlayerStat = {
   red_cards: number;
 };
 
+// Proper types instead of "any" — this tells TypeScript exactly what shape the data is
+type RawPlayer = { id: string; name: string; team: { name: string } | null };
+type RawEvent = { player_id: string; assist_player_id: string | null; event_type: string };
+
 async function fetchPlayerStats(): Promise<PlayerStat[]> {
   const { data: players, error: pErr } = await supabase
     .from("players")
@@ -25,7 +29,8 @@ async function fetchPlayerStats(): Promise<PlayerStat[]> {
   if (eErr) throw eErr;
 
   const stats = new Map<string, PlayerStat>();
-  players?.forEach((p: any) => {
+
+  (players as RawPlayer[])?.forEach((p) => {
     stats.set(p.id, {
       id: p.id,
       name: p.name,
@@ -37,7 +42,7 @@ async function fetchPlayerStats(): Promise<PlayerStat[]> {
     });
   });
 
-  events?.forEach((e: any) => {
+  (events as RawEvent[])?.forEach((e) => {
     const player = stats.get(e.player_id);
     if (player) {
       if (e.event_type === "goal") player.goals++;
@@ -57,6 +62,7 @@ export default function StatsPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["player-stats"],
     queryFn: fetchPlayerStats,
+    refetchInterval: 10000,
   });
 
   if (isLoading) {
@@ -81,6 +87,7 @@ export default function StatsPage() {
           <h3 className="font-semibold flex items-center gap-2">
             <CircleDot className="h-4 w-4 text-primary" /> Top Scorers
           </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">G = Goals · A = Assists · G/A = Combined</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -89,10 +96,9 @@ export default function StatsPage() {
                 <th className="text-left p-3 font-medium text-muted-foreground">#</th>
                 <th className="text-left p-3 font-medium text-muted-foreground">Player</th>
                 <th className="text-left p-3 font-medium text-muted-foreground">Team</th>
-                <th className="text-center p-3 font-medium text-muted-foreground">
-                  <CircleDot className="h-3 w-3 inline" />
-                </th>
+                <th className="text-center p-3 font-medium text-muted-foreground">G</th>
                 <th className="text-center p-3 font-medium text-muted-foreground">A</th>
+                <th className="text-center p-3 font-medium text-muted-foreground">G/A</th>
                 <th className="text-center p-3 font-medium text-muted-foreground">
                   <Square className="h-3 w-3 inline fill-warning text-warning" />
                 </th>
@@ -109,6 +115,7 @@ export default function StatsPage() {
                   <td className="p-3 text-muted-foreground">{p.team_name}</td>
                   <td className="text-center p-3 font-mono font-bold text-primary">{p.goals}</td>
                   <td className="text-center p-3 font-mono">{p.assists}</td>
+                  <td className="text-center p-3 font-mono font-bold">{p.goals + p.assists}</td>
                   <td className="text-center p-3 font-mono">{p.yellow_cards}</td>
                   <td className="text-center p-3 font-mono">{p.red_cards}</td>
                 </tr>
