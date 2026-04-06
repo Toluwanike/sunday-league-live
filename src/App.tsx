@@ -10,7 +10,6 @@ import MatchDetailPage from "@/pages/MatchDetailPage";
 import StandingsPage from "@/pages/StandingsPage";
 import StatsPage from "@/pages/StatsPage";
 import TeamsPage from "@/pages/TeamsPage";
-import LoginPage from "@/pages/LoginPage";
 import AdminPage from "@/pages/AdminPage";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -30,7 +29,6 @@ const App = () => (
             <Route path="/standings" element={<StandingsPage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/teams" element={<TeamsPage />} />
-            <Route path="/login" element={<LoginPage />} />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

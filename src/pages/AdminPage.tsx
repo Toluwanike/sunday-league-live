@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchTeams, fetchPlayers, fetchMatches } from "@/lib/supabase-helpers";
 import { Button } from "@/components/ui/button";
@@ -11,27 +10,22 @@ import { toast } from "sonner";
 import { Plus, Play, Pause, Square, CircleDot, Trash2, Shield, Users } from "lucide-react";
 import type { MatchWithTeams, MatchStatus, EventType } from "@/lib/supabase-helpers";
 import MatchStatusBadge from "@/components/MatchStatusBadge";
+import NotFound from "./NotFound";
 
 export default function AdminPage() {
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<any>(null);
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) navigate("/login");
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (!session?.user) navigate("/login");
-    });
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+  const secret = searchParams.get('secret');
+  const isAuthorized = secret === 'sundayleague';
 
-  const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: fetchTeams });
-  const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: () => fetchMatches() });
-  const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => fetchPlayers() });
+  const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: fetchTeams, enabled: isAuthorized });
+  const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: () => fetchMatches(), enabled: isAuthorized });
+  const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => fetchPlayers(), enabled: isAuthorized });
+
+  if (!isAuthorized) {
+    return <NotFound />;
+  }
 
   // Team management
   const [newTeamName, setNewTeamName] = useState("");
@@ -142,8 +136,6 @@ export default function AdminPage() {
     queryClient.invalidateQueries({ queryKey: ["matches"] });
     queryClient.invalidateQueries({ queryKey: ["match-events"] });
   };
-
-  if (!user) return null;
 
   const liveMatches = matches?.filter((m) => m.status === "live" || m.status === "halftime") ?? [];
   const notStarted = matches?.filter((m) => m.status === "not_started") ?? [];
