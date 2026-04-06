@@ -118,7 +118,7 @@ export type Database = {
           away_score: number
           away_team_id: string
           created_at: string
-          elapsed_seconds: number
+          timer_elapsed_seconds: number
           home_score: number
           home_team_id: string
           id: string
@@ -136,7 +136,7 @@ export type Database = {
           away_score?: number
           away_team_id: string
           created_at?: string
-          elapsed_seconds?: number
+          timer_elapsed_seconds?: number
           home_score?: number
           home_team_id: string
           id?: string
@@ -154,7 +154,7 @@ export type Database = {
           away_score?: number
           away_team_id?: string
           created_at?: string
-          elapsed_seconds?: number
+          timer_elapsed_seconds?: number
           home_score?: number
           home_team_id?: string
           id?: string

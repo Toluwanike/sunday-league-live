@@ -1,3 +1,8 @@
+// AdminPage.tsx
+// The admin control panel — only accessible when logged in
+// Handles: team management, player management, match creation,
+// match timer controls, stoppage time, and event recording (goals, cards)
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,13 +15,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, Play, Pause, Square, CircleDot, Shield, Users, Pencil, Trash2, Check, X } from "lucide-react";
 import type { MatchStatus, EventType } from "@/lib/supabase-helpers";
+import type { User } from "@supabase/supabase-js";
 import MatchStatusBadge from "@/components/MatchStatusBadge";
 
 export default function AdminPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<any>(null);
 
+  // Stores the logged-in user — null means not logged in
+  const [user, setUser] = useState<User | null>(null);
+
+  // ── Auth check ─────────────────────────────────────────────────────────────
+  // If the user is not logged in, redirect them to the login page
+  // Also listens for logout events so they get redirected immediately
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
@@ -29,6 +40,9 @@ export default function AdminPage() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // ── Data fetching ──────────────────────────────────────────────────────────
+  // Fetch teams, matches and players from Supabase
+  // matches refetches every 3 seconds to keep timer and scores fresh
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: fetchTeams });
   const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: () => fetchMatches(), refetchInterval: 3000 });
   const { data: players } = useQuery({ queryKey: ["players"], queryFn: () => fetchPlayers() });
@@ -38,25 +52,39 @@ export default function AdminPage() {
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [editingTeamName, setEditingTeamName] = useState("");
 
+  // Insert a new team into the database
   const addTeam = async () => {
     if (!newTeamName.trim()) return;
     const { error } = await supabase.from("teams").insert({ name: newTeamName.trim() });
     if (error) toast.error(error.message);
-    else { toast.success("Team added!"); setNewTeamName(""); queryClient.invalidateQueries({ queryKey: ["teams"] }); }
+    else {
+      toast.success("Team added!");
+      setNewTeamName("");
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+    }
   };
 
+  // Update an existing team's name
   const saveTeam = async (id: string) => {
     if (!editingTeamName.trim()) return;
     const { error } = await supabase.from("teams").update({ name: editingTeamName.trim() }).eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Team updated!"); setEditingTeamId(null); queryClient.invalidateQueries({ queryKey: ["teams"] }); }
+    else {
+      toast.success("Team updated!");
+      setEditingTeamId(null);
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+    }
   };
 
+  // Delete a team — confirms first to avoid accidents
   const deleteTeam = async (id: string) => {
     if (!confirm("Delete this team?")) return;
     const { error } = await supabase.from("teams").delete().eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Team deleted!"); queryClient.invalidateQueries({ queryKey: ["teams"] }); }
+    else {
+      toast.success("Team deleted!");
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+    }
   };
 
   // ── Player management ──────────────────────────────────────────────────────
@@ -69,6 +97,7 @@ export default function AdminPage() {
   const [editingPlayerNumber, setEditingPlayerNumber] = useState("");
   const [editingPlayerPosition, setEditingPlayerPosition] = useState("");
 
+  // Insert a new player linked to a team
   const addPlayer = async () => {
     if (!newPlayerName.trim() || !newPlayerTeam) return;
     const { error } = await supabase.from("players").insert({
@@ -85,6 +114,7 @@ export default function AdminPage() {
     }
   };
 
+  // Update an existing player's details
   const savePlayer = async (id: string) => {
     if (!editingPlayerName.trim()) return;
     const { error } = await supabase.from("players").update({
@@ -93,14 +123,22 @@ export default function AdminPage() {
       position: editingPlayerPosition || null,
     }).eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Player updated!"); setEditingPlayerId(null); queryClient.invalidateQueries({ queryKey: ["players"] }); }
+    else {
+      toast.success("Player updated!");
+      setEditingPlayerId(null);
+      queryClient.invalidateQueries({ queryKey: ["players"] });
+    }
   };
 
+  // Delete a player from the database
   const deletePlayer = async (id: string) => {
     if (!confirm("Delete this player?")) return;
     const { error } = await supabase.from("players").delete().eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Player deleted!"); queryClient.invalidateQueries({ queryKey: ["players"] }); }
+    else {
+      toast.success("Player deleted!");
+      queryClient.invalidateQueries({ queryKey: ["players"] });
+    }
   };
 
   // ── Match management ───────────────────────────────────────────────────────
@@ -111,6 +149,7 @@ export default function AdminPage() {
   const [matchRound, setMatchRound] = useState("semi_final");
   const [matchLeg, setMatchLeg] = useState("1");
 
+  // Create a new match — can be league or cup (semi final / final)
   const createMatch = async () => {
     if (!homeTeam || !awayTeam || homeTeam === awayTeam) {
       toast.error("Select two different teams");
@@ -121,6 +160,7 @@ export default function AdminPage() {
       away_team_id: awayTeam,
       match_date: matchDate ? new Date(matchDate).toISOString() : new Date().toISOString(),
       match_type: matchType,
+      // Only set round and leg for cup matches
       round: matchType === "cup" ? matchRound : null,
       leg: matchType === "cup" ? parseInt(matchLeg) : null,
     });
@@ -132,13 +172,18 @@ export default function AdminPage() {
     }
   };
 
+  // Delete a match and all its events (cascade delete handles events in DB)
   const deleteMatch = async (id: string) => {
     if (!confirm("Delete this match and all its events?")) return;
     const { error } = await supabase.from("matches").delete().eq("id", id);
     if (error) toast.error(error.message);
-    else { toast.success("Match deleted!"); queryClient.invalidateQueries({ queryKey: ["matches"] }); }
+    else {
+      toast.success("Match deleted!");
+      queryClient.invalidateQueries({ queryKey: ["matches"] });
+    }
   };
 
+  // Simple status update — used for finishing a match
   const updateMatchStatus = async (matchId: string, status: MatchStatus) => {
     const { error } = await supabase.from("matches").update({ status }).eq("id", matchId);
     if (error) toast.error(error.message);
@@ -152,11 +197,18 @@ export default function AdminPage() {
   const [eventAssist, setEventAssist] = useState("none");
   const [eventMinute, setEventMinute] = useState("");
 
+  // Get players from both teams in the selected match
+  // Used to populate the player dropdown in the event recorder
   const selectedMatch = matches?.find((m) => m.id === eventMatch);
   const matchPlayers = players?.filter(
-    (p: any) => selectedMatch && (p.team_id === selectedMatch.home_team_id || p.team_id === selectedMatch.away_team_id)
+    (p) => selectedMatch && (
+      (p as { team_id: string }).team_id === selectedMatch.home_team_id ||
+      (p as { team_id: string }).team_id === selectedMatch.away_team_id
+    )
   ) ?? [];
 
+  // Record a match event (goal, card, substitution)
+  // If it's a goal, also increments the team's score
   const recordEvent = async () => {
     if (!eventMatch || !eventPlayer || !eventMinute) {
       toast.error("Fill in all fields");
@@ -171,10 +223,11 @@ export default function AdminPage() {
     });
     if (error) { toast.error(error.message); return; }
 
+    // If it's a goal, find which team scored and increment their score
     if (eventType === "goal" && selectedMatch) {
-      const scoringPlayer = players?.find((p: any) => p.id === eventPlayer);
+      const scoringPlayer = players?.find((p) => (p as { id: string }).id === eventPlayer);
       if (scoringPlayer) {
-        const isHome = (scoringPlayer as any).team_id === selectedMatch.home_team_id;
+        const isHome = (scoringPlayer as { team_id: string }).team_id === selectedMatch.home_team_id;
         await supabase.from("matches")
           .update(isHome
             ? { home_score: selectedMatch.home_score + 1 }
@@ -189,8 +242,10 @@ export default function AdminPage() {
     queryClient.invalidateQueries({ queryKey: ["match-events"] });
   };
 
+  // Don't render anything until we confirm the user is logged in
   if (!user) return null;
 
+  // Split matches into buckets for the controls section
   const liveMatches = matches?.filter((m) => m.status === "live" || m.status === "halftime") ?? [];
   const notStarted = matches?.filter((m) => m.status === "not_started") ?? [];
   const allActiveMatches = [...notStarted, ...liveMatches];
@@ -205,7 +260,12 @@ export default function AdminPage() {
           <Shield className="h-4 w-4 text-primary" /> Teams
         </h2>
         <div className="flex gap-2">
-          <Input placeholder="New team name" value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTeam()} />
+          <Input
+            placeholder="New team name"
+            value={newTeamName}
+            onChange={(e) => setNewTeamName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addTeam()}
+          />
           <Button onClick={addTeam} size="sm"><Plus className="h-4 w-4" /></Button>
         </div>
         <div className="space-y-1">
@@ -245,28 +305,40 @@ export default function AdminPage() {
           <Input placeholder="Shirt number" type="number" value={newPlayerNumber} onChange={(e) => setNewPlayerNumber(e.target.value)} />
           <Input placeholder="Position" value={newPlayerPosition} onChange={(e) => setNewPlayerPosition(e.target.value)} />
         </div>
-        <Button onClick={addPlayer} size="sm" className="w-full"><Plus className="h-4 w-4 mr-1" /> Add Player</Button>
+        <Button onClick={addPlayer} size="sm" className="w-full">
+          <Plus className="h-4 w-4 mr-1" /> Add Player
+        </Button>
         <div className="space-y-1">
-          {players?.map((p: any) => (
-            <div key={p.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
-              {editingPlayerId === p.id ? (
-                <>
-                  <Input className="h-7 text-sm" value={editingPlayerName} onChange={(e) => setEditingPlayerName(e.target.value)} autoFocus />
-                  <Input className="h-7 text-sm w-16" placeholder="#" value={editingPlayerNumber} onChange={(e) => setEditingPlayerNumber(e.target.value)} />
-                  <Input className="h-7 text-sm w-20" placeholder="Pos" value={editingPlayerPosition} onChange={(e) => setEditingPlayerPosition(e.target.value)} />
-                  <Button size="sm" variant="outline" onClick={() => savePlayer(p.id)}><Check className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingPlayerId(null)}><X className="h-3 w-3" /></Button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1 text-sm font-medium">{p.name}</span>
-                  <span className="text-xs text-muted-foreground">{p.position ?? ""} {p.shirt_number ? `#${p.shirt_number}` : ""}</span>
-                  <Button size="sm" variant="outline" onClick={() => { setEditingPlayerId(p.id); setEditingPlayerName(p.name); setEditingPlayerNumber(p.shirt_number?.toString() ?? ""); setEditingPlayerPosition(p.position ?? ""); }}><Pencil className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="outline" onClick={() => deletePlayer(p.id)}><Trash2 className="h-3 w-3" /></Button>
-                </>
-              )}
-            </div>
-          ))}
+          {players?.map((p) => {
+            const player = p as { id: string; name: string; position?: string | null; shirt_number?: number | null };
+            return (
+              <div key={player.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
+                {editingPlayerId === player.id ? (
+                  <>
+                    <Input className="h-7 text-sm" value={editingPlayerName} onChange={(e) => setEditingPlayerName(e.target.value)} autoFocus />
+                    <Input className="h-7 text-sm w-16" placeholder="#" value={editingPlayerNumber} onChange={(e) => setEditingPlayerNumber(e.target.value)} />
+                    <Input className="h-7 text-sm w-20" placeholder="Pos" value={editingPlayerPosition} onChange={(e) => setEditingPlayerPosition(e.target.value)} />
+                    <Button size="sm" variant="outline" onClick={() => savePlayer(player.id)}><Check className="h-3 w-3" /></Button>
+                    <Button size="sm" variant="outline" onClick={() => setEditingPlayerId(null)}><X className="h-3 w-3" /></Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm font-medium">{player.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {player.position ?? ""} {player.shirt_number ? `#${player.shirt_number}` : ""}
+                    </span>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      setEditingPlayerId(player.id);
+                      setEditingPlayerName(player.name);
+                      setEditingPlayerNumber(player.shirt_number?.toString() ?? "");
+                      setEditingPlayerPosition(player.position ?? "");
+                    }}><Pencil className="h-3 w-3" /></Button>
+                    <Button size="sm" variant="outline" onClick={() => deletePlayer(player.id)}><Trash2 className="h-3 w-3" /></Button>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </Card>
 
@@ -286,7 +358,14 @@ export default function AdminPage() {
               {teams?.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Input type="datetime-local" className="col-span-2" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
+          {/* Date and time picker — sets when the match is scheduled */}
+          <Input
+            type="datetime-local"
+            className="col-span-2"
+            value={matchDate}
+            onChange={(e) => setMatchDate(e.target.value)}
+          />
+          {/* Match type — league or cup */}
           <Select value={matchType} onValueChange={setMatchType}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -294,6 +373,7 @@ export default function AdminPage() {
               <SelectItem value="cup">Cup</SelectItem>
             </SelectContent>
           </Select>
+          {/* Cup-only options — round and leg number */}
           {matchType === "cup" && (
             <>
               <Select value={matchRound} onValueChange={setMatchRound}>
@@ -314,6 +394,7 @@ export default function AdminPage() {
           )}
         </div>
         <Button onClick={createMatch} className="w-full">Create Match</Button>
+        {/* List of all matches with delete button */}
         <div className="space-y-1">
           {matches?.map((m) => (
             <div key={m.id} className="flex items-center gap-2 p-2 rounded-lg bg-secondary/50">
@@ -326,13 +407,16 @@ export default function AdminPage() {
                 )}
               </span>
               <MatchStatusBadge status={m.status} />
-              <Button size="sm" variant="outline" onClick={() => deleteMatch(m.id)}><Trash2 className="h-3 w-3" /></Button>
+              <Button size="sm" variant="outline" onClick={() => deleteMatch(m.id)}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
             </div>
           ))}
         </div>
       </Card>
 
       {/* ── Match Controls + Timer ─────────────────────────────────────────── */}
+      {/* Only shown when there are matches that haven't finished yet */}
       {allActiveMatches.length > 0 && (
         <Card className="p-4 space-y-3">
           <h2 className="font-semibold">Match Controls</h2>
@@ -344,48 +428,68 @@ export default function AdminPage() {
                   <MatchStatusBadge status={m.status} />
                 </div>
                 <div className="flex gap-1">
+
+                  {/* Start match — sets status to live and starts the timer */}
                   {m.status === "not_started" && (
                     <Button size="sm" variant="outline" onClick={async () => {
-                      await supabase.from("matches").update({
+                      const { error } = await supabase.from("matches").update({
                         status: "live",
                         timer_started_at: new Date().toISOString(),
-                        elapsed_seconds: 0,
+                        timer_elapsed_seconds: 0, // reset timer to 0
                       }).eq("id", m.id);
-                      queryClient.invalidateQueries({ queryKey: ["matches"] });
-                    }}><Play className="h-3 w-3" /></Button>
+                      if (error) toast.error(error.message);
+                      else queryClient.invalidateQueries({ queryKey: ["matches"] });
+                    }}>
+                      <Play className="h-3 w-3" />
+                    </Button>
                   )}
+
+                  {/* Live match controls — pause (halftime) or end match */}
                   {m.status === "live" && (
                     <>
+                      {/* Pause = halftime — saves elapsed time so timer can resume correctly */}
                       <Button size="sm" variant="outline" onClick={async () => {
-                        const elapsed = m.elapsed_seconds ?? 0;
+                        const elapsed = m.timer_elapsed_seconds ?? 0;
                         const secondsSinceStart = m.timer_started_at
-                          ? (Date.now() - new Date(m.timer_started_at).getTime()) / 1000 : 0;
-                        await supabase.from("matches").update({
+                          ? (Date.now() - new Date(m.timer_started_at).getTime()) / 1000
+                          : 0;
+                        const { error } = await supabase.from("matches").update({
                           status: "halftime",
                           timer_paused_at: new Date().toISOString(),
-                          elapsed_seconds: Math.floor(elapsed + secondsSinceStart),
+                          timer_elapsed_seconds: Math.floor(elapsed + secondsSinceStart),
                         }).eq("id", m.id);
-                        queryClient.invalidateQueries({ queryKey: ["matches"] });
-                      }}><Pause className="h-3 w-3" /></Button>
+                        if (error) toast.error(error.message);
+                        else queryClient.invalidateQueries({ queryKey: ["matches"] });
+                      }}>
+                        <Pause className="h-3 w-3" />
+                      </Button>
+
+                      {/* End match — sets status to finished */}
                       <Button size="sm" variant="outline" onClick={() => updateMatchStatus(m.id, "finished")}>
                         <Square className="h-3 w-3" />
                       </Button>
                     </>
                   )}
+
+                  {/* Resume from halftime — restarts the timer from where it paused */}
                   {m.status === "halftime" && (
                     <Button size="sm" variant="outline" onClick={async () => {
-                      await supabase.from("matches").update({
+                      const { error } = await supabase.from("matches").update({
                         status: "live",
                         timer_started_at: new Date().toISOString(),
-                        timer_paused_at: null,
+                        timer_paused_at: null, // clear the pause timestamp
                       }).eq("id", m.id);
-                      queryClient.invalidateQueries({ queryKey: ["matches"] });
-                    }}><Play className="h-3 w-3" /></Button>
+                      if (error) toast.error(error.message);
+                      else queryClient.invalidateQueries({ queryKey: ["matches"] });
+                    }}>
+                      <Play className="h-3 w-3" />
+                    </Button>
                   )}
                 </div>
               </div>
 
-              {/* Stoppage time — only shown during live matches */}
+              {/* Stoppage time buttons — only shown during live matches */}
+              {/* Admin clicks +1 to +5 to add stoppage time */}
               {m.status === "live" && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-muted-foreground">Stoppage:</span>
@@ -393,11 +497,15 @@ export default function AdminPage() {
                     <Button
                       key={mins}
                       size="sm"
+                      // Highlight the currently selected stoppage time
                       variant={m.stoppage_time === mins ? "default" : "outline"}
                       className="h-6 w-8 text-xs p-0"
                       onClick={async () => {
-                        await supabase.from("matches").update({ stoppage_time: mins }).eq("id", m.id);
-                        queryClient.invalidateQueries({ queryKey: ["matches"] });
+                        const { error } = await supabase.from("matches")
+                          .update({ stoppage_time: mins })
+                          .eq("id", m.id);
+                        if (error) toast.error(error.message);
+                        else queryClient.invalidateQueries({ queryKey: ["matches"] });
                       }}
                     >
                       +{mins}
@@ -411,19 +519,26 @@ export default function AdminPage() {
       )}
 
       {/* ── Record Event ──────────────────────────────────────────────────── */}
+      {/* Used to log goals, cards and substitutions during a live match */}
       <Card className="p-4 space-y-3">
         <h2 className="font-semibold flex items-center gap-2">
           <CircleDot className="h-4 w-4 text-primary" /> Record Event
         </h2>
+
+        {/* Only live matches appear here — can't record events for upcoming/finished */}
         <Select value={eventMatch} onValueChange={setEventMatch}>
           <SelectTrigger><SelectValue placeholder="Select match" /></SelectTrigger>
           <SelectContent>
             {liveMatches.map((m) => (
-              <SelectItem key={m.id} value={m.id}>{m.home_team.name} vs {m.away_team.name}</SelectItem>
+              <SelectItem key={m.id} value={m.id}>
+                {m.home_team.name} vs {m.away_team.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
         <div className="grid grid-cols-2 gap-2">
+          {/* Event type selector */}
           <Select value={eventType} onValueChange={(v) => setEventType(v as EventType)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -433,27 +548,47 @@ export default function AdminPage() {
               <SelectItem value="substitution">🔄 Substitution</SelectItem>
             </SelectContent>
           </Select>
-          <Input placeholder="Minute" type="number" value={eventMinute} onChange={(e) => setEventMinute(e.target.value)} />
+
+          {/* Match minute — admin types in the current minute */}
+          <Input
+            placeholder="Minute"
+            type="number"
+            value={eventMinute}
+            onChange={(e) => setEventMinute(e.target.value)}
+          />
         </div>
+
+        {/* Player selector — shows only players from the two teams in the selected match */}
         <Select value={eventPlayer} onValueChange={setEventPlayer}>
           <SelectTrigger><SelectValue placeholder="Player" /></SelectTrigger>
           <SelectContent>
-            {matchPlayers.map((p: any) => (
-              <SelectItem key={p.id} value={p.id}>{p.name} ({p.team?.name})</SelectItem>
-            ))}
+            {matchPlayers.map((p) => {
+              const player = p as { id: string; name: string; team?: { name: string } };
+              return (
+                <SelectItem key={player.id} value={player.id}>
+                  {player.name} ({player.team?.name})
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
+
+        {/* Assist selector — only shown for goals */}
         {eventType === "goal" && (
           <Select value={eventAssist} onValueChange={setEventAssist}>
             <SelectTrigger><SelectValue placeholder="Assist (optional)" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="none">None</SelectItem>
-              {matchPlayers.map((p: any) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
+              {matchPlayers.map((p) => {
+                const player = p as { id: string; name: string };
+                return (
+                  <SelectItem key={player.id} value={player.id}>{player.name}</SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         )}
+
         <Button onClick={recordEvent} className="w-full">Record Event</Button>
       </Card>
     </div>

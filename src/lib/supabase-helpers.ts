@@ -80,7 +80,7 @@ export async function fetchMatchLineups(matchId: string) {
 // Used by both admin and viewer so they always see the same time
 export function calculateMatchTime(match: MatchWithTeams): number {
   if (!match.timer_started_at) return 0;
-  const elapsed = match.elapsed_seconds ?? 0;
+  const elapsed = match.timer_elapsed_seconds ?? 0;
   // If paused, just return stored elapsed time
   if (match.timer_paused_at) return Math.floor(elapsed / 60);
   // If running, add seconds since timer was last started
