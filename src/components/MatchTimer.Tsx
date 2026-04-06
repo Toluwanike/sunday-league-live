@@ -20,7 +20,6 @@ export default function MatchTimer({ match }: Props) {
 
       let totalSeconds = elapsed;
 
-      // Add live seconds if timer is running (not paused)
       if (match.timer_started_at && !match.timer_paused_at) {
         const secondsSinceStart =
           (Date.now() - new Date(match.timer_started_at).getTime()) / 1000;
@@ -29,7 +28,6 @@ export default function MatchTimer({ match }: Props) {
 
       const minutes = Math.floor(totalSeconds / 60);
 
-      // Show stoppage time format once we hit the match duration
       if (stoppage > 0 && minutes >= 10) {
         setDisplayTime(`10+${stoppage}'`);
       } else {
