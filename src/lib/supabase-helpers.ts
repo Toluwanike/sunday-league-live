@@ -23,7 +23,6 @@ export type PlayerWithTeam = Player & {
   team: Team;
 };
 
-// Fetch helpers
 export async function fetchTeams() {
   const { data, error } = await supabase.from("teams").select("*").order("name");
   if (error) throw error;
@@ -75,4 +74,16 @@ export async function fetchMatchLineups(matchId: string) {
     .eq("match_id", matchId);
   if (error) throw error;
   return data;
+}
+
+// Calculates the current match time in minutes from timer columns
+// Used by both admin and viewer so they always see the same time
+export function calculateMatchTime(match: MatchWithTeams): number {
+  if (!match.timer_started_at) return 0;
+  const elapsed = match.elapsed_seconds ?? 0;
+  // If paused, just return stored elapsed time
+  if (match.timer_paused_at) return Math.floor(elapsed / 60);
+  // If running, add seconds since timer was last started
+  const secondsSinceStart = (Date.now() - new Date(match.timer_started_at).getTime()) / 1000;
+  return Math.floor((elapsed + secondsSinceStart) / 60);
 }
