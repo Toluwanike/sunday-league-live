@@ -250,7 +250,7 @@ export type Database = {
     }
     Enums: {
       event_type: "goal" | "yellow_card" | "red_card" | "substitution"
-      match_status: "not_started" | "live" | "halftime" | "finished"
+      match_status: "not_started" | "live" | "paused" | "finished"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -379,7 +379,7 @@ export const Constants = {
   public: {
     Enums: {
       event_type: ["goal", "yellow_card", "red_card", "substitution"],
-      match_status: ["not_started", "live", "halftime", "finished"],
+      match_status: ["not_started", "live", "paused", "finished"],
     },
   },
 } as const

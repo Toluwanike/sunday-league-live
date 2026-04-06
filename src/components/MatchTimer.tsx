@@ -16,7 +16,7 @@ export default function MatchTimer({ match }: Props) {
   const [displayTime, setDisplayTime] = useState("0'");
 
   useEffect(() => {
-    if (match.status !== "live" && match.status !== "halftime") return;
+    if (match.status !== "live" && match.status !== "paused") return;
 
     const tick = () => {
       // Use timer_elapsed_seconds — this is the correct column name in the database
@@ -51,7 +51,7 @@ export default function MatchTimer({ match }: Props) {
   }, [match]);
 
   // Show HT label during halftime — timer is frozen
-  if (match.status === "halftime") {
+  if (match.status === "paused") {
     return <span className="text-warning font-mono font-bold text-xs">HT</span>;
   }
 
