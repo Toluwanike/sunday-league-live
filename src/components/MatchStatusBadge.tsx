@@ -10,8 +10,8 @@ export default function MatchStatusBadge({ status }: { status: MatchStatus }) {
           LIVE
         </Badge>
       );
-    case "halftime":
-      return <Badge className="bg-warning/20 text-warning border-warning/30">HT</Badge>;
+    case "paused":
+      return <Badge className="bg-warning/20 text-warning border-warning/30">Paused</Badge>;
     case "finished":
       return <Badge variant="secondary">FT</Badge>;
     default:
