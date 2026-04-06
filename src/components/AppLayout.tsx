@@ -1,33 +1,30 @@
 // AppLayout.tsx
-// This is the "shell" of the entire app — every page is wrapped inside this component.
-// It renders the top navigation bar and then displays whatever page the user is on.
+// The main shell of the app — wraps every single page
+// Handles: top navigation, theme switching (dark/light), and auth state (login/logout)
 
 import { Link, useLocation } from "react-router-dom";
-// Link = like an <a> tag but for React apps (doesn't reload the page)
-// useLocation = tells us what the current URL is, e.g. "/matches" or "/admin"
+// Link = React Router's version of <a> — navigates without refreshing the page
+// useLocation = tells us the current URL path so we can highlight the active nav item
 
-import { Trophy, Calendar, Users, Shield, LogIn, LogOut, LayoutDashboard } from "lucide-react";
-// These are icons from the lucide-react icon library
-// Each one is used next to a nav item label
+import { Trophy, Calendar, Users, Shield, LogIn, LogOut, LayoutDashboard, Sun, Moon } from "lucide-react";
+// Icons from lucide-react — each one maps to a nav item or action button
 
 import { Button } from "@/components/ui/button";
-// A pre-styled button component from our UI library (shadcn)
+// Pre-styled button component from shadcn/ui
 
 import { supabase } from "@/integrations/supabase/client";
-// Our Supabase client — we use it here to check if someone is logged in
-// and to let them log out
+// Supabase client — used here to listen for auth changes and handle sign out
 
 import { useEffect, useState } from "react";
-// useState = lets us store values that can change (like the logged-in user)
-// useEffect = lets us run code when the component first loads
+// useState = store values that can change (user, theme)
+// useEffect = run code when component mounts or when a value changes
 
 import type { User } from "@supabase/supabase-js";
-// This is just the TypeScript type for a Supabase user object
-// It tells TypeScript what shape the user data will be
+// TypeScript type for a Supabase user object — tells TS what shape the user data is
 
-// ─── Navigation Items ─────────────────────────────────────────────────────────
-// This is the list of pages shown in the top nav bar
-// Each item has: a URL path, a display label, and an icon
+// ─── Navigation items ─────────────────────────────────────────────────────────
+// Each item has a URL path, a display label, and an icon
+// These are rendered as links in the top nav bar
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/matches", label: "Matches", icon: Calendar },
@@ -37,126 +34,169 @@ const navItems = [
 ];
 
 // ─── AppLayout Component ──────────────────────────────────────────────────────
-// "children" means whatever page content gets passed inside this layout
-// For example: <AppLayout><Dashboard /></AppLayout>
+// "children" = whatever page is currently being shown inside the layout
+// e.g. <AppLayout><Dashboard /></AppLayout>
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   
-  // useLocation gives us the current URL path the user is on
-  // e.g. if they're on http://localhost:8080/admin, location.pathname = "/admin"
+  // useLocation gives us the current URL path
+  // e.g. "/matches" or "/admin"
   const location = useLocation();
 
-  // This stores the currently logged-in user (or null if nobody is logged in)
+  // Stores the currently logged-in Supabase user
+  // null = nobody is logged in
   const [user, setUser] = useState<User | null>(null);
 
-  // We only want to show the login button when the user is on /admin or /login
-  // This is a security/UX decision — regular viewers should never see a login button
-  // They'd have no reason to log in since they can't access the admin anyway
+  // ─── Theme state ────────────────────────────────────────────────────────────
+  // true = dark mode, false = light mode
+  // On first load, we check localStorage to restore the user's last preference
+  // If nothing is saved, we default to dark mode
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    return saved ? saved === "dark" : true;
+  });
+
+  // ─── Apply theme to <html> element ──────────────────────────────────────────
+  // Tailwind's darkMode: ["class"] works by looking for a "dark" class on <html>
+  // We add or remove that class here whenever isDark changes
+  // We also save the preference to localStorage so it persists across page refreshes
+  useEffect(() => {
+    const root = document.documentElement; // = the <html> element
+    if (isDark) {
+      root.classList.add("dark");
+      root.classList.remove("light");
+    } else {
+      root.classList.remove("dark");
+      root.classList.add("light");
+    }
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+  }, [isDark]); // runs every time isDark changes
+
+  // ─── Admin area detection ────────────────────────────────────────────────────
+  // We only show the login button when the user is on /admin or /login
+  // On all other public pages, the login button is hidden entirely
+  // This prevents regular viewers from even knowing there's an admin panel
   const isAdminArea = location.pathname === "/admin" || location.pathname === "/login";
 
-  // ─── Auth Listener ──────────────────────────────────────────────────────────
-  // This runs once when the layout first loads
+  // ─── Auth listener ───────────────────────────────────────────────────────────
+  // This runs once when the layout mounts
   // It does two things:
-  //   1. Gets the current session immediately (in case the user is already logged in)
-  //   2. Listens for any future login/logout events and updates the user state
+  //   1. Gets the current session immediately (handles page refresh while logged in)
+  //   2. Subscribes to future auth changes (login/logout events)
   useEffect(() => {
-    // onAuthStateChange fires whenever the user logs in or logs out
-    // We update our "user" state based on the new session
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // session?.user = the logged-in user, or undefined if logged out
+      // ?? null = fallback to null if undefined
       setUser(session?.user ?? null);
-      // session?.user means "get the user from the session if it exists"
-      // ?? null means "if there's no session, set user to null"
     });
 
-    // getSession checks if there's already an active login session right now
-    // This handles the case where the user refreshed the page while logged in
+    // Also check immediately on mount in case user is already logged in
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
 
-    // Cleanup: when the component is removed from the page,
-    // we unsubscribe from the auth listener to avoid memory leaks
+    // Cleanup: stop listening when this component unmounts
+    // Prevents memory leaks from stale subscriptions
     return () => subscription.unsubscribe();
-  }, []); 
-  // The empty [] means this effect only runs once, when the component first mounts
+  }, []); // empty [] = only runs once on mount
 
   return (
     <div className="min-h-screen bg-background">
-      {/* ── Top Navigation Bar ─────────────────────────────────────────────── */}
-      {/* sticky top-0 means the nav sticks to the top when you scroll */}
-      {/* backdrop-blur-md gives it a frosted glass effect */}
+
+      {/* ── Top Navigation Bar ──────────────────────────────────────────────── */}
+      {/* sticky = stays at the top when scrolling */}
+      {/* backdrop-blur-md = frosted glass effect on the nav */}
+      {/* z-50 = sits above all other page content */}
       <header className="sticky top-0 z-50 border-b border-border bg-card/90 backdrop-blur-md">
         <div className="container flex h-14 items-center justify-between">
-          
-          {/* ── Logo / Brand ──────────────────────────────────────────────── */}
-          {/* Clicking this takes you back to the homepage */}
-          <Link to="/" className="flex items-center gap-2">
+
+          {/* ── Logo ────────────────────────────────────────────────────────── */}
+          {/* Clicking the logo always takes you back to the homepage */}
+          {/* shrink-0 = prevents the logo from shrinking on small screens */}
+          <Link to="/" className="flex items-center gap-2 shrink-0">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Trophy className="h-4 w-4 text-primary-foreground" />
             </div>
-            {/* hidden sm:inline means the text is hidden on very small screens */}
-            <span className="text-lg font-bold text-gradient-pitch hidden sm:inline">SundayLeague</span>
+            {/* hidden sm:inline = hide text on very small screens, show on sm and above */}
+            <span className="text-lg font-bold text-foreground hidden sm:inline">
+              Talksport
+            </span>
           </Link>
 
-          {/* ── Main Nav Links ────────────────────────────────────────────── */}
-          {/* We loop through our navItems array and create a link for each one */}
+          {/* ── Page Navigation Links ────────────────────────────────────────── */}
+          {/* Loop through navItems and render a Link for each one */}
           <nav className="flex items-center gap-1">
             {navItems.map((item) => {
-              // Check if this nav item matches the current page URL
-              // If it does, we highlight it with a different style
+              // Check if this link matches the current page URL
+              // If yes, apply the active highlight style
               const isActive = location.pathname === item.to;
               return (
                 <Link
-                  key={item.to} // React needs a unique "key" when rendering lists
+                  key={item.to} // React needs a unique key when rendering lists
                   to={item.to}
                   className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                     isActive
-                      ? "bg-primary/10 text-primary"       // highlighted style for current page
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary" // default style
+                      ? "bg-primary/10 text-primary"         // active = green highlight
+                      : "text-foreground/80 hover:text-foreground hover:bg-secondary" // default
                   }`}
                 >
                   <item.icon className="h-4 w-4" />
-                  {/* hidden md:inline hides the label text on small screens, shows on medium+ */}
+                  {/* hidden md:inline = show label text only on medium screens and above */}
+                  {/* On mobile, only the icon shows to save space */}
                   <span className="hidden md:inline">{item.label}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {/* ── Auth Button (top right corner) ───────────────────────────── */}
-          {/* This section has three possible states:
-              1. User is logged in → show a Logout button (always visible)
-              2. User is not logged in AND they're on /admin or /login → show Login button
-              3. User is not logged in AND they're on a public page → show nothing */}
-          <div>
+          {/* ── Right Side Controls ──────────────────────────────────────────── */}
+          {/* Contains: theme toggle button + login/logout button */}
+          <div className="flex items-center gap-1 shrink-0">
+
+            {/* Theme toggle — switches between dark and light mode */}
+            {/* Shows a Sun icon in dark mode (click to go light) */}
+            {/* Shows a Moon icon in light mode (click to go dark) */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsDark(!isDark)}
+              className="text-foreground/80 hover:text-foreground"
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+
+            {/* Auth button — three possible states:
+                1. Logged in → show logout button (always visible)
+                2. Not logged in + on admin area → show login button
+                3. Not logged in + on public page → show nothing */}
             {user ? (
-              // State 1: Logged in — show logout button
-              // Clicking this calls Supabase to end the session
+              // State 1: Logged in — clicking this ends the Supabase session
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => supabase.auth.signOut()}
-                className="text-muted-foreground"
+                className="text-foreground/80 hover:text-foreground"
               >
                 <LogOut className="h-4 w-4" />
               </Button>
             ) : isAdminArea ? (
-              // State 2: Not logged in, but on an admin page — show login button
-              // This is the only way a viewer would see a login option
+              // State 2: Not logged in, on admin page — show login button
               <Link to="/login">
-                <Button variant="ghost" size="sm" className="text-muted-foreground">
+                <Button variant="ghost" size="sm" className="text-foreground/80 hover:text-foreground">
                   <LogIn className="h-4 w-4" />
                 </Button>
               </Link>
             ) : null}
-            {/* State 3: Not logged in on a public page — render nothing (null) */}
+            {/* State 3: Not logged in on a public page — render nothing */}
           </div>
+
         </div>
       </header>
 
-      {/* ── Page Content ───────────────────────────────────────────────────── */}
-      {/* This is where the actual page (Dashboard, Matches, Admin etc.) renders */}
-      {/* "children" is whatever page was passed into this layout */}
+      {/* ── Page Content ─────────────────────────────────────────────────────── */}
+      {/* This is where the actual page component renders */}
+      {/* "children" = whatever page was passed into this layout */}
       <main className="container py-6">{children}</main>
+
     </div>
   );
 }
