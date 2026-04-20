@@ -1,18 +1,173 @@
+// Dashboard.tsx
+// Main landing page — shows next match countdown, quick stats,
+// live matches, team form table and recent results
+
 import { useQuery } from "@tanstack/react-query";
-import { fetchMatches } from "@/lib/supabase-helpers";
+import { fetchMatches, fetchTeams, fetchPlayers, fetchMatchEvents } from "@/lib/supabase-helpers";
 import MatchCard from "@/components/MatchCard";
-import { Trophy, Zap } from "lucide-react";
+import { Trophy, Zap, Target, CheckCircle, Users, Calendar } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { useMemo, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+
+// ── Countdown timer component ──────────────────────────────────────────────
+// Counts down to the next scheduled match in real time
+function Countdown({ targetDate }: { targetDate: string }) {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, mins: 0, secs: 0 });
+
+  useEffect(() => {
+    const tick = () => {
+      const diff = new Date(targetDate).getTime() - Date.now();
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, mins: 0, secs: 0 });
+        return;
+      }
+      setTimeLeft({
+        days: Math.floor(diff / 86400000),
+        hours: Math.floor((diff % 86400000) / 3600000),
+        mins: Math.floor((diff % 3600000) / 60000),
+        secs: Math.floor((diff % 60000) / 1000),
+      });
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [targetDate]);
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+
+  return (
+    <div className="grid grid-cols-4 gap-2 mt-4">
+      {[
+        { label: "Days", value: timeLeft.days },
+        { label: "Hours", value: timeLeft.hours },
+        { label: "Mins", value: timeLeft.mins },
+        { label: "Secs", value: timeLeft.secs },
+      ].map(({ label, value }) => (
+        <div key={label} className="bg-secondary/50 rounded-lg p-3 text-center">
+          <div className="font-mono text-2xl font-bold">{pad(value)}</div>
+          <div className="text-xs text-muted-foreground mt-1">{label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Stat card component ────────────────────────────────────────────────────
+function StatCard({ icon, value, label }: { icon: React.ReactNode; value: string | number; label: string }) {
+  return (
+    <Card className="p-4 flex flex-col items-center justify-center text-center gap-1">
+      <div className="text-primary mb-1">{icon}</div>
+      <div className="text-2xl font-bold font-mono">{value}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
+  // Fetch all data needed for the dashboard
   const { data: matches, isLoading } = useQuery({
     queryKey: ["matches"],
     queryFn: () => fetchMatches(),
     refetchInterval: 5000,
   });
 
-  const liveMatches = matches?.filter((m) => m.status === "live" || m.status === "halftime") ?? [];
-  const recentMatches = matches?.filter((m) => m.status === "finished").slice(0, 5) ?? [];
-  const upcoming = matches?.filter((m) => m.status === "not_started").slice(0, 5) ?? [];
+  const { data: teams } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+  });
+
+  const { data: events } = useQuery({
+    queryKey: ["events"],
+    queryFn: () => fetchMatchEvents(),
+    refetchInterval: 10000,
+  });
+
+  // ── Derived match lists ────────────────────────────────────────────────
+  const liveMatches = matches?.filter(
+    (m) => m.status === "live" || m.status === "paused"
+  ) ?? [];
+
+  // Next upcoming match — soonest not_started match
+  const nextMatch = matches
+    ?.filter((m) => m.status === "not_started")
+    .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime())[0];
+
+  // Last 5 finished matches — most recent first
+  const recentMatches = matches
+    ?.filter((m) => m.status === "finished")
+    .sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime())
+    .slice(0, 5) ?? [];
+
+  // ── Quick stats ────────────────────────────────────────────────────────
+  const totalGoals = events?.filter((e: any) => e.event_type === "goal").length ?? 0;
+  const matchesPlayed = matches?.filter((m) => m.status === "finished").length ?? 0;
+
+  // Top scorer — player with most goals
+  const topScorer = useMemo(() => {
+    if (!events) return null;
+    const goalMap = new Map<string, { name: string; goals: number }>();
+    events
+      .filter((e: any) => e.event_type === "goal")
+      .forEach((e: any) => {
+        const existing = goalMap.get(e.player_id) ?? { name: e.player?.name ?? "Unknown", goals: 0 };
+        goalMap.set(e.player_id, { ...existing, goals: existing.goals + 1 });
+      });
+    return Array.from(goalMap.values()).sort((a, b) => b.goals - a.goals)[0] ?? null;
+  }, [events]);
+
+  // Top assist provider
+  const topAssist = useMemo(() => {
+    if (!events) return null;
+    const assistMap = new Map<string, { name: string; assists: number }>();
+    events
+      .filter((e: any) => e.event_type === "goal" && e.assist_player_id)
+      .forEach((e: any) => {
+        const existing = assistMap.get(e.assist_player_id) ?? { name: e.assist_player?.name ?? "Unknown", assists: 0 };
+        assistMap.set(e.assist_player_id, { ...existing, assists: existing.assists + 1 });
+      });
+    return Array.from(assistMap.values()).sort((a, b) => b.assists - a.assists)[0] ?? null;
+  }, [events]);
+
+  // ── Team form table ────────────────────────────────────────────────────
+  // Shows each team's points and last 3 results (W/D/L badges)
+  const teamForm = useMemo(() => {
+    if (!teams || !matches) return [];
+
+    return teams.map((team) => {
+      // Only count finished league matches for form
+      const teamMatches = matches
+        .filter(
+          (m) =>
+            m.status === "finished" &&
+            (m.match_type === "league" || !m.match_type) &&
+            (m.home_team_id === team.id || m.away_team_id === team.id)
+        )
+        .sort((a, b) => new Date(b.match_date).getTime() - new Date(a.match_date).getTime());
+
+      // Calculate total points
+      let points = 0;
+      teamMatches.forEach((m) => {
+        const isHome = m.home_team_id === team.id;
+        const scored = isHome ? m.home_score : m.away_score;
+        const conceded = isHome ? m.away_score : m.home_score;
+        if (scored > conceded) points += 3;
+        else if (scored === conceded) points += 1;
+      });
+
+      // Last 3 results as W/D/L
+      const last3 = teamMatches.slice(0, 3).map((m) => {
+        const isHome = m.home_team_id === team.id;
+        const scored = isHome ? m.home_score : m.away_score;
+        const conceded = isHome ? m.away_score : m.home_score;
+        if (scored > conceded) return "W";
+        if (scored < conceded) return "L";
+        return "D";
+      });
+
+      return { id: team.id, name: team.name, points, last3 };
+    }).sort((a, b) => b.points - a.points);
+  }, [teams, matches]);
 
   if (isLoading) {
     return (
@@ -24,15 +179,58 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
+
+      {/* ── Page title ──────────────────────────────────────────────────── */}
       <div>
-        <h1 className="text-3xl font-bold text-gradient-pitch flex items-center gap-2">
+        <h1 className="text-3xl font-bold flex items-center gap-2">
           <Trophy className="h-8 w-8 text-primary" />
           Sunday League
         </h1>
         <p className="text-muted-foreground mt-1">Live scores, standings & stats</p>
       </div>
 
-      {/* Live Matches */}
+      {/* ── Next match countdown ─────────────────────────────────────────
+          Only shown when there is an upcoming scheduled match            */}
+      {nextMatch && (
+        <Card className="p-5 border-primary/20">
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
+            <Calendar className="h-3.5 w-3.5" />
+            Next Match
+          </div>
+          <p className="font-bold text-lg">
+            {nextMatch.home_team.name} vs {nextMatch.away_team.name}
+          </p>
+          <Countdown targetDate={nextMatch.match_date} />
+        </Card>
+      )}
+
+      {/* ── Quick stats strip ────────────────────────────────────────────
+          Shows total goals, matches played, top scorer, top assist       */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard
+          icon={<Target className="h-5 w-5" />}
+          value={totalGoals}
+          label="Total Goals"
+        />
+        <StatCard
+          icon={<CheckCircle className="h-5 w-5" />}
+          value={matchesPlayed}
+          label="Matches Played"
+        />
+        <StatCard
+          icon={<Users className="h-5 w-5" />}
+          value={topScorer?.name ?? "—"}
+          label={topScorer ? `${topScorer.goals} goals` : "Top Scorer"}
+        />
+        <StatCard
+          icon={<Users className="h-5 w-5" />}
+          value={topAssist?.name ?? "—"}
+          label={topAssist ? `${topAssist.assists} assists` : "No assists yet"}
+        />
+      </div>
+
+      {/* ── Live matches ─────────────────────────────────────────────────
+          Shown at the top when any match is currently live or paused     */}
       {liveMatches.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
@@ -47,19 +245,63 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* Upcoming */}
-      {upcoming.length > 0 && (
+      {/* ── Team form table ──────────────────────────────────────────────
+          Shows all teams sorted by points with last 3 results as badges  */}
+      {teamForm.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-3">Upcoming</h2>
-          <div className="grid gap-3">
-            {upcoming.map((m) => (
-              <MatchCard key={m.id} match={m} />
-            ))}
-          </div>
+          <h2 className="text-lg font-semibold mb-3">Team Form</h2>
+          <Card className="overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-secondary/50">
+                  <th className="text-left p-3 font-medium text-muted-foreground w-8">#</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground">Team</th>
+                  <th className="text-center p-3 font-medium text-muted-foreground">Pts</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground">Last 3</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamForm.map((team, i) => (
+                  <tr key={team.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
+                    <td className="p-3 font-mono text-muted-foreground text-xs">{i + 1}</td>
+                    <td className="p-3 font-semibold">{team.name}</td>
+                    <td className="text-center p-3 font-mono font-bold text-primary">{team.points}</td>
+                    <td className="p-3">
+                      {/* W/D/L result badges — colour coded */}
+                      <div className="flex gap-1 justify-end">
+                        {team.last3.length === 0 && (
+                          <span className="text-xs text-muted-foreground">No results</span>
+                        )}
+                        {team.last3.map((result, j) => (
+                          <span
+                            key={j}
+                            className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center ${
+                              result === "W"
+                                ? "bg-primary text-primary-foreground"
+                                : result === "D"
+                                ? "bg-secondary text-secondary-foreground"
+                                : "bg-live/20 text-live"
+                            }`}
+                          >
+                            {result}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+          {/* Link to full standings page */}
+          <Link to="/standings" className="text-xs text-primary hover:underline mt-2 block text-right">
+            View full standings →
+          </Link>
         </section>
       )}
 
-      {/* Recent Results */}
+      {/* ── Recent results ───────────────────────────────────────────────
+          Last 5 finished matches most recent first                       */}
       {recentMatches.length > 0 && (
         <section>
           <h2 className="text-lg font-semibold mb-3">Recent Results</h2>
@@ -68,14 +310,21 @@ export default function Dashboard() {
               <MatchCard key={m.id} match={m} />
             ))}
           </div>
+          <Link to="/matches" className="text-xs text-primary hover:underline mt-2 block text-right">
+            View all matches →
+          </Link>
         </section>
       )}
 
+      {/* ── Empty state ──────────────────────────────────────────────────
+          Only shown when there are no matches at all                     */}
       {!matches?.length && (
         <div className="text-center py-16">
           <Trophy className="h-16 w-16 mx-auto text-muted-foreground/30 mb-4" />
           <h2 className="text-xl font-semibold text-muted-foreground">No matches yet</h2>
-          <p className="text-muted-foreground/60 mt-1">Log in as admin to create your first match</p>
+          <p className="text-muted-foreground/60 mt-1">
+            Log in as admin to create your first match
+          </p>
         </div>
       )}
     </div>
