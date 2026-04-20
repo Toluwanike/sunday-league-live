@@ -63,7 +63,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Trophy className="h-4 w-4 text-primary-foreground" />
             </div>
             {/* Brand name — hidden on very small screens */}
-            <span className="text-lg font-bold hidden sm:inline">Talksport</span>
+            <span className="text-lg font-bold hidden sm:inline">Talksport League</span>
           </Link>
 
           {/* Nav links */}
