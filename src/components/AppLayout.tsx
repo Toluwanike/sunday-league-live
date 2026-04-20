@@ -1,10 +1,11 @@
 import { Link, useLocation } from "react-router-dom";
-import { Trophy, Calendar, Users, Shield, LayoutDashboard } from "lucide-react";
+import { Trophy, Calendar, Users, Shield, LogIn, LogOut, LayoutDashboard, Sun, Moon, Star } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/matches", label: "Matches", icon: Calendar },
   { to: "/standings", label: "Standings", icon: Trophy },
+  { to: "/cup", label: "Cup", icon: Star },  
   { to: "/stats", label: "Stats", icon: Users },
   { to: "/teams", label: "Teams", icon: Shield },
 ];
