@@ -154,6 +154,81 @@ export default function CupPage() {
         </div>
       )}
 
+
+      {/* ── Qualification Playoff ───────────────────────────────────────────
+          Only shown if a playoff match exists — used when two teams are
+          level on points and need a single match to decide the 4th cup spot */}
+      {(() => {
+        const playoff = matches?.filter(
+          (m) => m.match_type === "cup" && m.round === "playoff"
+        ) ?? [];
+
+        if (playoff.length === 0) return null;
+
+        return (
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Qualification Playoff
+            </h2>
+            {playoff.map((m) => (
+              <Link key={m.id} to={`/match/${m.id}`}>
+                <Card className="p-4 border-amber-500/30 hover:border-amber-500/60 transition-colors">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-amber-500 uppercase tracking-wider">
+                      4th Place Playoff
+                    </span>
+                    <MatchStatusBadge status={m.status} />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Home team */}
+                    <div className="flex-1 text-right">
+                      <p className="font-bold">{m.home_team.name}</p>
+                      <p className="text-xs text-muted-foreground">Home</p>
+                    </div>
+                    {/* Score */}
+                    <div className="text-center">
+                      <div className="font-mono text-2xl font-bold">
+                        {m.status === "not_started"
+                          ? "– : –"
+                          : `${m.home_score} : ${m.away_score}`}
+                      </div>
+                      <span className={`text-xs font-semibold mt-1 block ${getStatusColor(m.status)}`}>
+                        {m.status === "finished"
+                          ? "Full time"
+                          : m.status === "live"
+                          ? "Live now"
+                          : "1 match"}
+                      </span>
+                    </div>
+                    {/* Away team */}
+                    <div className="flex-1">
+                      <p className="font-bold">{m.away_team.name}</p>
+                      <p className="text-xs text-muted-foreground">Away</p>
+                    </div>
+                  </div>
+
+                  {/* Winner advances message */}
+                  {m.status !== "finished" && (
+                    <p className="text-xs text-center text-muted-foreground mt-3 border-t border-border pt-3">
+                      Winner advances to the cup semi finals
+                    </p>
+                  )}
+                  {m.status === "finished" && (
+                    <p className="text-xs text-center text-amber-500 mt-3 border-t border-border pt-3 font-semibold">
+                      {m.home_score > m.away_score
+                        ? `${m.home_team.name} advances`
+                        : m.away_score > m.home_score
+                        ? `${m.away_team.name} advances`
+                        : "Replay required"}
+                    </p>
+                  )}
+                </Card>
+              </Link>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* ── Semi Finals ─────────────────────────────────────────────────────── */}
       {semiFinalPairs.length > 0 && (
         <div>
