@@ -236,3 +236,29 @@ export async function fetchMatchLineups(matchId: string) {
   if (error) throw error;
   return data;
 }
+
+
+// Fetches all events across all matches — used by dashboard stats
+// No matchId needed — this gets events for ALL matches in a competition
+export async function fetchAllEvents(competitionId?: string) {
+  // Step 1: get all match IDs for this competition
+  let matchQuery = supabase.from("matches").select("id");
+  if (competitionId) matchQuery = matchQuery.eq("competition_id", competitionId);
+  const { data: matchIds, error: matchError } = await matchQuery;
+  if (matchError) throw matchError;
+
+  const ids = matchIds?.map((m) => m.id) ?? [];
+  if (ids.length === 0) return [];
+
+  // Step 2: get all events for those matches with player info joined
+  const { data, error } = await supabase
+    .from("match_events")
+    .select(`
+      *,
+      player:players!match_events_player_id_fkey(*),
+      assist_player:players!match_events_assist_player_id_fkey(*)
+    `)
+    .in("match_id", ids);
+  if (error) throw error;
+  return data as MatchEventWithPlayer[];
+}
