@@ -12,6 +12,8 @@ import StatsPage from "@/pages/StatsPage";
 import TeamsPage from "@/pages/TeamsPage";
 import AdminPage from "@/pages/AdminPage";
 import CupPage from "@/pages/CupPage";
+import HistoryPage from "@/pages/HistoryPage";
+import HistoryDetailPage from "@/pages/HistoryDetailPage";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ const App = () => (
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/admin" element={<AdminPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/history/:id" element={<HistoryDetailPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
